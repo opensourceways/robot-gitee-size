@@ -5,12 +5,11 @@ import (
 	"strconv"
 	"strings"
 
-	"github.com/opensourceways/community-robot-lib/giteeclient"
 	"github.com/sirupsen/logrus"
 
-	sdk "gitee.com/openeuler/go-gitee/gitee"
-	libconfig "github.com/opensourceways/community-robot-lib/config"
-	libplugin "github.com/opensourceways/community-robot-lib/giteeplugin"
+	"github.com/opensourceways/community-robot-lib/config"
+	framework "github.com/opensourceways/community-robot-lib/robot-gitee-framework"
+	sdk "github.com/opensourceways/go-gitee/gitee"
 )
 
 const (
@@ -38,11 +37,11 @@ type robot struct {
 	cli iClient
 }
 
-func (bot *robot) NewPluginConfig() libconfig.PluginConfig {
+func (bot *robot) NewConfig() config.Config {
 	return &configuration{}
 }
 
-func (bot *robot) getConfig(cfg libconfig.PluginConfig, org, repo string) (*botConfig, error) {
+func (bot *robot) getConfig(cfg config.Config, org, repo string) (*botConfig, error) {
 	c, ok := cfg.(*configuration)
 	if !ok {
 		return nil, fmt.Errorf("can't convert to configuration")
@@ -55,30 +54,31 @@ func (bot *robot) getConfig(cfg libconfig.PluginConfig, org, repo string) (*botC
 	return nil, fmt.Errorf("no config for this repo:%s/%s", org, repo)
 }
 
-func (bot *robot) RegisterEventHandler(p libplugin.HandlerRegitster) {
-	p.RegisterPullRequestHandler(bot.handlePREvent)
+func (bot *robot) RegisterEventHandler(f framework.HandlerRegitster) {
+	f.RegisterPullRequestHandler(bot.handlePREvent)
 }
 
-func (bot *robot) handlePREvent(e *sdk.PullRequestEvent, pc libconfig.PluginConfig, log *logrus.Entry) error {
+func (bot *robot) handlePREvent(e *sdk.PullRequestEvent, pc config.Config, log *logrus.Entry) error {
 	if !isPRChanged(e) {
 		log.Info("pull request is not opened or source_branch_changed, skipping")
 
 		return nil
 	}
 
-	pr := giteeclient.GetPRInfoByPREvent(e)
-	org, repo := pr.Org, pr.Repo
+	org, repo := e.GetOrgRepo()
+	pr := e.GetPullRequest()
 
 	cfg, err := bot.getConfig(pc, org, repo)
 	if err != nil {
 		return err
 	}
 
-	return bot.handlePR(pr, cfg)
+	return bot.handlePR(org, repo, pr, cfg)
 }
 
-func (bot *robot) handlePR(pr giteeclient.PRInfo, cfg *botConfig) error {
-	changeFiles, err := bot.cli.GetPullRequestChanges(pr.Org, pr.Repo, pr.Number)
+func (bot *robot) handlePR(org, repo string, pr *sdk.PullRequestHook, cfg *botConfig) error {
+	number := pr.GetNumber()
+	changeFiles, err := bot.cli.GetPullRequestChanges(org, repo, number)
 	if err != nil {
 		return err
 	}
@@ -93,20 +93,21 @@ func (bot *robot) handlePR(pr giteeclient.PRInfo, cfg *botConfig) error {
 
 	label := bot.compareAndGetLabel(changeCount, cfg.Sizes)
 
-	if pr.HasLabel(label) {
+	prLabels := pr.LabelsToSet()
+	if prLabels.Has(label) {
 		return nil
 	}
 
-	for l := range pr.Labels {
+	for l := range prLabels {
 		if strings.HasPrefix(l, labelPrefix) {
 
-			if err := bot.cli.RemovePRLabel(pr.Org, pr.Repo, pr.Number, l); err != nil {
+			if err := bot.cli.RemovePRLabel(org, repo, number, l); err != nil {
 				return err
 			}
 		}
 	}
 
-	return bot.cli.AddPRLabel(pr.Org, pr.Repo, pr.Number, label)
+	return bot.cli.AddPRLabel(org, repo, number, label)
 }
 
 func (bot *robot) compareAndGetLabel(totalCount int, size Size) (label string) {
@@ -129,7 +130,7 @@ func isPRChanged(e *sdk.PullRequestEvent) bool {
 	switch e.GetActionDesc() {
 	case "open":
 		return true
-	case giteeclient.PRActionChangedSourceBranch:
+	case sdk.PRActionChangedSourceBranch:
 		return true
 	default:
 		return false

@@ -4,7 +4,7 @@ set -euo pipefail
 
 cd $(dirname $0)
 me=$(basename $0)
-plugin_name=$(pwd | xargs basename)
+robot_name=$(pwd | xargs basename)
 pn=$#
 all_param=( $@ )
 
@@ -20,11 +20,11 @@ update_repo(){
     if [ -f go.mod ]; then
         go mod tidy
     else
-        go mod init github.com/opensourceways/robot-gitee-size
+        go mod init github.com/opensourceways/robot-gitee-openeuler-review
         go mod tidy
     fi
 
-    $bazel run //:gazelle -- update-repos -from_file=go.mod
+    $bazel run //:gazelle -- update-repos -from_file=go.mod -prune
 
     $bazel run //:gazelle
 }
@@ -34,7 +34,7 @@ build(){
 
     tips "build binary"
 
-    $bazel build --platforms=@io_bazel_rules_go//go/toolchain:linux_amd64 //:$plugin_name
+    $bazel build --platforms=@io_bazel_rules_go//go/toolchain:linux_amd64 //:$robot_name
 }
 
 image(){
