@@ -128,7 +128,7 @@ func (bot *robot) compareAndGetLabel(totalCount int, size Size) (label string) {
 
 func isPRChanged(e *sdk.PullRequestEvent) bool {
 	switch e.GetActionDesc() {
-	case "open":
+	case sdk.ActionOpen:
 		return true
 	case sdk.PRActionChangedSourceBranch:
 		return true

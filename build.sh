@@ -20,7 +20,7 @@ update_repo(){
     if [ -f go.mod ]; then
         go mod tidy
     else
-        go mod init github.com/opensourceways/robot-gitee-openeuler-review
+        go mod init github.com/opensourceways/robot-gitee-size
         go mod tidy
     fi
 
